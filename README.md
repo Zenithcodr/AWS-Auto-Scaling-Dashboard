@@ -71,17 +71,24 @@ tests/                  pytest tests
 ## 3. Prerequisites
 
 **To just run the dashboard UI locally:**
-- Python 3.10+
+- [Python 3.10+](https://www.python.org/downloads/) (on Windows, the `py` launcher is installed with it)
 
-**To run the full project against real AWS:**
-- An AWS account with credentials (access key / secret / optional session token)
-- Terraform
-- Ansible
-- AWS CLI (optional, handy for verifying credentials)
+**To run the full project against real AWS, also install:**
 
-> Note: `.env`, `lab.env`, `*.pem` keys and Terraform state are git-ignored and are
-> **never** committed. The `.env.example` / `lab.env.example` files contain only
-> placeholders.
+| Tool | Why you need it | Install |
+|------|-----------------|---------|
+| AWS account + credentials | boto3/Terraform authenticate as you | [Create account](https://aws.amazon.com/) |
+| [Terraform](https://developer.hashicorp.com/terraform/install) | Builds the ALB, ASG, launch template | `winget install Hashicorp.Terraform` (Windows) / `brew install terraform` (Mac) |
+| [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html) | Configures the workload on the instances | `pip install ansible` (needs WSL/Linux/Mac; not native Windows) |
+| [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) | Optional — verify credentials with `aws sts get-caller-identity` | `winget install Amazon.AWSCLI` / `brew install awscli` |
+
+> **Windows tip:** the dashboard itself runs natively on Windows. Terraform and the
+> AWS CLI have native Windows builds, but **Ansible does not run natively on Windows** —
+> use **WSL2** (Ubuntu), Git Bash, or a Mac/Linux machine for the Ansible step.
+
+> **Security note:** `.env`, `lab.env`, `*.pem` keys and Terraform state are git-ignored
+> and are **never** committed. Only the `.env.example` / `lab.env.example` templates
+> (placeholders only) are in the repo.
 
 ---
 
@@ -120,6 +127,25 @@ Then open: **http://127.0.0.1:5000**
 
 Health check: **http://127.0.0.1:5000/healthz** should return `{"status":"ok",...}`.
 
+### What you'll see on the dashboard
+
+| Page / URL | What it does |
+|------------|--------------|
+| `/` | Main dashboard: live CPU chart, instance list, ASG desired/min/max, recent scaling events |
+| `/control` | Manual control panel: buttons to force scale-out / scale-in and set desired capacity |
+| `/healthz` | JSON health check (used by the AWS load balancer too) |
+
+### HTTP API (used by the UI, also callable directly)
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/metrics` | GET | Full snapshot: CPU, instances, ASG state, controller decision, history, events. `?refresh=true` forces a fresh AWS read |
+| `/api/instances` | GET | Current EC2 instances + ASG summary |
+| `/api/history` | GET | Recent metric history (`?limit=` up to 500) |
+| `/api/events` | GET | Recent scaling events (`?limit=` up to 200) |
+| `/api/control` | GET/POST | Read controller state, or POST an action (scale out/in, set capacity). Requires `X-Control-Token` header if `CONTROL_API_TOKEN` is set |
+| `/api/download-metrics` | GET | Download the collected `metrics.csv` |
+
 ---
 
 ## 5. Connecting it to a real AWS account (full setup)
@@ -140,8 +166,20 @@ USE_IAM_ROLE=false
 `boto3` uses these to authenticate as you against your AWS account.
 
 ### Step 2 — Create the AWS infrastructure with Terraform
-Terraform needs a few inputs about your account (VPC, two public subnets, an
-Amazon Linux 2023 AMI ID, an EC2 key pair name, and your public IP for SSH).
+Terraform needs a few inputs about your account. Provide them in a
+`terraform/terraform.tfvars` file (or you'll be prompted). The required ones:
+
+| Variable | Required | Example | What it is |
+|----------|----------|---------|------------|
+| `vpc_id` | yes | `vpc-0abc123` | The VPC to launch into |
+| `public_subnet_ids` | yes | `["subnet-aaa","subnet-bbb"]` | Two public subnets for the ALB + ASG |
+| `ami_id` | yes | `ami-0abc123` | Amazon Linux 2023 AMI in your region |
+| `key_name` | yes | `my-lab-key` | Existing EC2 key pair (Ansible SSHes with it) |
+| `ssh_allowed_cidr_blocks` | yes | `["1.2.3.4/32"]` | Your public IP, so only you can SSH |
+| `aws_region` | no (default `us-east-1`) | `us-east-1` | Region |
+| `instance_type` | no (default `t3.micro`) | `t3.micro` | Instance size |
+| `min_size` / `max_size` / `desired_capacity` | no (`1`/`4`/`1`) | – | ASG bounds |
+
 See `terraform/variables.tf` for the full list and `terraform/README.md`.
 
 ```bash
@@ -243,7 +281,21 @@ terraform destroy
 
 ---
 
-## 10. Notes & safety
+## 10. Troubleshooting
+
+| Symptom | Cause & fix |
+|---------|-------------|
+| Dashboard loads but panels show "AWS credentials were not found" | `.env` still has placeholder keys. Paste real credentials and restart. |
+| "AWS API call failed" / `AccessDenied` | Credentials are valid but lack permissions, or the ASG name in `.env` is wrong. Check `AUTO_SCALING_GROUP_NAME`. |
+| Auth errors appear after a while (lab credentials) | Temporary/session credentials expired. Refresh `AWS_SESSION_TOKEN` in `.env` and restart. |
+| `py -3.10` not found (Windows) | Python 3.10 isn't installed; install it, or use `py -3` / `python`. |
+| `RuntimeError: Dashboard runtime policy is local_only` | You're running it inside AWS. This app is meant to run locally; run it on your own machine. |
+| Port 5000 already in use | Change `APP_PORT` in `.env`, or stop the other process. |
+| Ansible step fails on Windows | Ansible has no native Windows build — run that step from WSL2, Git Bash, or Mac/Linux. |
+
+---
+
+## 11. Notes & safety
 
 - The dashboard is meant to run **locally**, not on an AWS instance. A runtime
   guard (`runtime_guard.py`) blocks it from starting if it detects it is running
