@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ monitoring_label }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body data-page="dashboard">
+    <div class="screen-noise"></div>
+
+    <div class="app-frame">
+        <header class="topbar reveal">
+            <div class="brand-wrap">
+                <a class="brand" href="{{ url_for('index') }}">
+                    <span class="brand-mark"><span></span></span>
+                    <span class="brand-copy">
+                        <strong>Cloud & DevOps Console</strong>
+                        <small>{{ monitoring_label }}</small>
+                    </span>
+                </a>
+                <nav class="top-nav">
+                    <a class="top-nav-link is-active" href="{{ url_for('index') }}">Dashboard</a>
+                    <a class="top-nav-link" href="#toolchain">Tools</a>
+                    <a class="top-nav-link" href="#infrastructure">Fleet</a>
+                    <a class="top-nav-link" href="#events">Events</a>
+                    <a class="top-nav-link" href="{{ url_for('control_page') }}">Scaling Studio</a>
+                </nav>
+            </div>
+            <div class="topbar-meta">
+                <div class="meta-chip">
+                    <span>Local Time</span>
+                    <strong id="liveClock">--:--</strong>
+                </div>
+                <div class="meta-chip">
+                    <span>Snapshot</span>
+                    <strong id="liveDate">Waiting...</strong>
+                </div>
+                <a class="button ghost" href="{{ url_for('control_page') }}">Scaling Studio</a>
+                <button class="button" id="refreshDashboardBtn" type="button">Refresh Now</button>
+            </div>
+        </header>
+
+        <main class="page-shell dashboard-shell">
+            <section class="headline-bar reveal">
+                <div>
+                    <p class="eyebrow">Mac-Hosted Dashboard • AWS Resources • DevOps Project</p>
+                    <h1>Monitoring & Control Dashboard</h1>
+                    <p class="subtitle">Runs locally on your Mac while Terraform and Ansible manage the AWS fleet, ALB traffic, CloudWatch telemetry, and guarded Auto Scaling decisions.</p>
+                </div>
+                <div class="headline-status">
+                    <div class="headline-time">
+                        <strong id="headlineTime">--:--</strong>
+                        <span>Time</span>
+                    </div>
+                    <div class="headline-date" id="headlineDate">Loading date...</div>
+                </div>
+            </section>
+
+            <section class="dashboard-grid">
+                <article class="panel overview-panel panel-span-2 reveal">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Infrastructure Pulse</h3>
+                            <span>CPU, request activity, and health across the live AWS estate</span>
+                        </div>
+                        <div class="status-chip" id="controlModeChip">Loading...</div>
+                    </div>
+
+                    <div class="metric-cluster">
+                        <article class="metric-card metric-card--large">
+                            <p>Average CPU</p>
+                            <h2 id="avgCpuCard">0%</h2>
+                            <span id="avgCpuDetail">CloudWatch CPUUtilization</span>
+                        </article>
+                        <article class="metric-card">
+                            <p>Active Instances</p>
+                            <h2 id="instanceCountCard">0</h2>
+                            <span id="instanceDetail">Running and pending EC2 instances</span>
+                        </article>
+                        <article class="metric-card">
+                            <p>Request Activity</p>
+                            <h2 id="requestCard">0</h2>
+                            <span id="requestDetail">ALB RequestCount</span>
+                        </article>
+                        <article class="metric-card">
+                            <p>Healthy Targets</p>
+                            <h2 id="healthyHostCard">0</h2>
+                            <span id="healthyHostDetail">Target group health</span>
+                        </article>
+                    </div>
+
+                    <div class="chart-frame">
+                        <canvas id="cpuChart"></canvas>
+                    </div>
+                    <div class="telemetry-strip">
+                        <article class="telemetry-chip">
+                            <span>Thresholds</span>
+                            <strong id="cpuThresholdChip">Out -- / In --</strong>
+                        </article>
+                        <article class="telemetry-chip">
+                            <span>Latest CPU Sample</span>
+                            <strong id="cpuSampleChip">Waiting for telemetry...</strong>
+                        </article>
+                        <article class="telemetry-chip telemetry-chip--wide">
+                            <span>Last Submitted Scaling Event</span>
+                            <strong id="lastScaleActionChip">No scaling action has been submitted yet.</strong>
+                        </article>
+                    </div>
+                </article>
+
+                <article class="panel capacity-panel reveal">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Scaling Capacity</h3>
+                            <span id="latestAction">Checking latest controller action...</span>
+                        </div>
+                        <div class="mode-pill" id="operatingMode">Loading...</div>
+                    </div>
+
+                    <div class="capacity-highlight">
+                        <div>
+                            <p class="capacity-label">Desired Capacity</p>
+                            <div class="accent-value accent-value--light" id="desiredCapacityCard">0</div>
+                            <p class="capacity-caption" id="desiredCapacityDetail">Auto Scaling Group target instance count</p>
+                        </div>
+                        <div class="capacity-side">
+                            <div class="capacity-side-item">
+                                <span>Actual Active</span>
+                                <strong id="actualCapacityCard">0</strong>
+                            </div>
+                            <div class="capacity-side-item">
+                                <span>Scaling Gap</span>
+                                <strong id="scalingGapCard">0</strong>
+                            </div>
+                            <div class="capacity-side-item">
+                                <span>Last update</span>
+                                <strong id="lastUpdatedText">Waiting for first live refresh...</strong>
+                            </div>
+                            <div class="capacity-side-item">
+                                <span>Refresh cycle</span>
+                                <strong id="refreshCycleValue">10 sec</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="capacity-meter">
+                        <div>
+                            <p>Available Capacity</p>
+                            <span id="capacityMeterDetail">Auto Scaling Group target instance count</span>
+                        </div>
+                        <div class="capacity-meter-bar">
+                            <span id="capacityMeterFill"></span>
+                        </div>
+                        <strong id="capacityMeterValue">0%</strong>
+                    </div>
+                </article>
+
+                <article class="panel recommendations-panel reveal">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Recommendations</h3>
+                            <span>Telemetry-driven guidance for the current operating window</span>
+                        </div>
+                    </div>
+                    <div class="recommendation-list" id="recommendationsList">
+                        <article class="recommendation-card recommendation-card--accent">
+                            <strong>Waiting for telemetry</strong>
+                            <p>Recommendations will appear after the first successful refresh.</p>
+                        </article>
+                    </div>
+                </article>
+
+                <article class="panel accent-panel reveal">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Fleet Snapshot</h3>
+                            <span>Live coverage across compute and targets</span>
+                        </div>
+                    </div>
+                    <div class="accent-value" id="instanceCountAccent">0</div>
+                    <p class="accent-caption">Active Instances</p>
+                    <div class="accent-detail-row">
+                        <span>Healthy targets</span>
+                        <strong id="healthyHostAccent">0</strong>
+                    </div>
+                    <div class="accent-detail-row">
+                        <span>Observed requests</span>
+                        <strong id="requestAccent">0</strong>
+                    </div>
+                </article>
+
+                <article class="panel controller-panel reveal">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Scaling Posture</h3>
+                            <span>Thresholds, safeguards, and controller intent</span>
+                        </div>
+                    </div>
+                    <div class="controller-summary" id="controllerSummary"></div>
+                    <div class="chart-frame chart-frame--compact">
+                        <canvas id="instanceChart"></canvas>
+                    </div>
+                </article>
+
+                <article class="panel panel-span-2 traffic-panel reveal">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Traffic Flow</h3>
+                            <span>Request trend with a smooth activity strip</span>
+                        </div>
+                        <span class="muted">Latest 120 samples</span>
+                    </div>
+                    <div class="chart-frame chart-frame--traffic">
+                        <canvas id="requestChart"></canvas>
+                    </div>
+                    <div class="activity-strip" id="activityHeatmap"></div>
+                </article>
+            </section>
+
+            <section class="panel toolchain-panel reveal" id="toolchain">
+                <div class="panel-header">
+                    <div>
+                        <h3>Cloud + DevOps Toolchain</h3>
+                        <span>Project layers matched to the AWS Auto-Scaling Tools deck</span>
+                    </div>
+                    <span class="muted">Local Docker • AWS APIs • CSV/SQLite • IaC</span>
+                </div>
+                <div class="toolchain-grid">
+                    <article class="toolchain-card">
+                        <span class="toolchain-index">01</span>
+                        <strong>Local Dashboard</strong>
+                        <p>Python, Flask, Gunicorn, HTML, CSS, JavaScript, Chart.js, and Docker Compose run on your Mac.</p>
+                    </article>
+                    <article class="toolchain-card">
+                        <span class="toolchain-index">02</span>
+                        <strong>AWS + APIs</strong>
+                        <p>boto3 connects the local dashboard to EC2, Application Load Balancer, Auto Scaling Group, CloudWatch, IAM, and optional S3 archival.</p>
+                    </article>
+                    <article class="toolchain-card">
+                        <span class="toolchain-index">03</span>
+                        <strong>Data + Analytics</strong>
+                        <p>Metric snapshots and audit events are retained in CSV and SQLite for history, reports, and future automation.</p>
+                    </article>
+                    <article class="toolchain-card toolchain-card--accent">
+                        <span class="toolchain-index">04</span>
+                        <strong>DevOps + IaC</strong>
+                        <p>Terraform creates AWS resources, Ansible configures the workload target, and Docker keeps the dashboard local.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="panel reveal" id="infrastructure">
+                <div class="panel-header">
+                    <div>
+                        <h3>Active EC2 Instances</h3>
+                        <span>Live inventory from EC2 and Auto Scaling APIs</span>
+                    </div>
+                </div>
+                <div class="instance-state-summary" id="instanceStateSummary">
+                    <article class="state-pill">
+                        <span class="state-pill__label">Preparing fleet summary</span>
+                        <strong>Waiting for first refresh...</strong>
+                    </article>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Instance ID</th>
+                                <th>State</th>
+                                <th>Health</th>
+                                <th>Lifecycle</th>
+                                <th>AZ</th>
+                                <th>Private IP</th>
+                                <th>Type</th>
+                            </tr>
+                        </thead>
+                        <tbody id="instancesTableBody">
+                            <tr>
+                                <td colspan="7">Loading instance inventory...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel reveal" id="events">
+                <div class="panel-header">
+                    <div>
+                        <h3>Scaling and Audit Events</h3>
+                        <span>Controller logs combined with AWS scaling activity</span>
+                    </div>
+                </div>
+                <div class="event-list" id="eventsList"></div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        window.APP_BOOTSTRAP = {
+            pollIntervalSeconds: {{ poll_interval_seconds }},
+            tokenRequired: false
+        };
+    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

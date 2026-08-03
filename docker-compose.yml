@@ -1,0 +1,17 @@
+services:
+  dashboard:
+    container_name: local-autoscaling-dashboard
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DASHBOARD_RUNTIME_POLICY: local_only
+      ALLOW_DASHBOARD_ON_AWS: "false"
+      LOCAL_DEMO_WORK_ENABLED: "${LOCAL_DEMO_WORK_ENABLED:-false}"
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

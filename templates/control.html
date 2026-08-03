@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ monitoring_label }} - Scaling Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body data-page="control">
+    <div class="screen-noise"></div>
+
+    <div class="app-frame">
+        <header class="topbar reveal">
+            <div class="brand-wrap">
+                <a class="brand" href="{{ url_for('index') }}">
+                    <span class="brand-mark"><span></span></span>
+                    <span class="brand-copy">
+                        <strong>Cloud & DevOps Console</strong>
+                        <small>{{ monitoring_label }}</small>
+                    </span>
+                </a>
+                <nav class="top-nav">
+                    <a class="top-nav-link" href="{{ url_for('index') }}">Dashboard</a>
+                    <a class="top-nav-link is-active" href="{{ url_for('control_page') }}">Scaling Studio</a>
+                    <a class="top-nav-link" href="{{ url_for('index') }}#events">Events</a>
+                </nav>
+            </div>
+            <div class="topbar-meta">
+                <div class="meta-chip">
+                    <span>Local Time</span>
+                    <strong id="liveClock">--:--</strong>
+                </div>
+                <a class="button ghost" href="{{ url_for('index') }}">Back to Dashboard</a>
+            </div>
+        </header>
+
+        <main class="page-shell control-shell">
+            <section class="headline-bar reveal">
+                <div>
+                    <p class="eyebrow">AWS Auto-Scaling Control</p>
+                    <h1>Controller and Auto Scaling Controls</h1>
+                    <p class="subtitle">Thresholds and operating mode shape the local controller. Minimum size, maximum size, and cooldown now sync back to the AWS Auto Scaling Group when configured.</p>
+                </div>
+                <div class="headline-status">
+                    <div class="headline-time">
+                        <strong id="controlModeBadge">Loading...</strong>
+                        <span>Controller Mode</span>
+                    </div>
+                    <div class="headline-date" id="controlLastReason">Waiting for controller state...</div>
+                </div>
+            </section>
+
+            <section class="dashboard-grid control-grid">
+                <article class="panel panel-span-2 settings-panel reveal">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Controller Settings</h3>
+                            <span>Update thresholds, guardrails, and AWS-backed capacity bounds</span>
+                        </div>
+                    </div>
+
+                    <div class="callout-grid">
+                        <article class="callout-card">
+                            <strong>Local controller logic</strong>
+                            <p>Mode selection, active control, and CPU thresholds change how this app decides to scale.</p>
+                        </article>
+                        <article class="callout-card callout-card--accent">
+                            <strong>AWS synchronization</strong>
+                            <p>Minimum instances, maximum instances, and cooldown are pushed to the Auto Scaling Group when the ASG name is configured.</p>
+                        </article>
+                    </div>
+
+                    <form id="controlForm" class="form-grid">
+                        <label>
+                            <span>Scaling Mode</span>
+                            <select name="mode" id="modeField">
+                                <option value="custom">custom</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Scale-Out CPU Threshold (%)</span>
+                            <input type="number" name="scale_out_cpu_threshold" id="scaleOutField" min="1" max="100" required>
+                        </label>
+                        <label>
+                            <span>Scale-In CPU Threshold (%)</span>
+                            <input type="number" name="scale_in_cpu_threshold" id="scaleInField" min="1" max="100" required>
+                        </label>
+                        <label>
+                            <span>Minimum Instances</span>
+                            <input type="number" name="min_instances" id="minField" min="1" required>
+                        </label>
+                        <label>
+                            <span>Maximum Instances</span>
+                            <input type="number" name="max_instances" id="maxField" min="1" required>
+                        </label>
+                        <label>
+                            <span>Cooldown (seconds)</span>
+                            <input type="number" name="cooldown_seconds" id="cooldownField" min="0" required>
+                        </label>
+                        <label class="checkbox-field">
+                            <input type="checkbox" name="active_control" id="activeControlField">
+                            <span>Enable active scaling control</span>
+                        </label>
+                        {% if token_required %}
+                        <label class="full-width">
+                            <span>Control API Token</span>
+                            <input type="password" name="control_token" id="tokenField" placeholder="Required for POST actions">
+                        </label>
+                        {% endif %}
+                        <div class="full-width form-actions">
+                            <button class="button" type="submit">Save and Sync</button>
+                            <button class="button ghost" type="button" id="refreshControlBtn">Reload State</button>
+                        </div>
+                    </form>
+                </article>
+
+                <article class="panel accent-panel safeguards-panel reveal">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Safeguards</h3>
+                            <span>Bounded configuration for predictable scaling</span>
+                        </div>
+                    </div>
+                    <div class="accent-value">Bounded</div>
+                    <p class="accent-caption">Scaling Guardrails</p>
+                    <div class="accent-detail-row">
+                        <span>State</span>
+                        <strong id="controlStateMirror">Loading...</strong>
+                    </div>
+                    <div class="accent-detail-row">
+                        <span>Sync note</span>
+                        <strong id="controlSyncHint">Waiting for settings...</strong>
+                    </div>
+                </article>
+
+                <article class="panel manual-panel reveal">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Manual Actions</h3>
+                            <span>Operational actions for demos and controlled testing</span>
+                        </div>
+                    </div>
+                    <div class="manual-actions">
+                        <button class="button" data-control-action="evaluate_now" type="button">Evaluate Now</button>
+                        <button class="button ghost" data-control-action="refresh" type="button">Refresh Snapshot</button>
+                        {% if control_allow_force %}
+                        <button class="button warning" data-control-action="force_scale_out" type="button">Force Scale Out</button>
+                        <button class="button warning ghost" data-control-action="force_scale_in" type="button">Force Scale In</button>
+                        {% endif %}
+                    </div>
+                    <div class="status-box" id="controlActionResult">
+                        Submit an action to see the result here.
+                    </div>
+                </article>
+
+                <article class="panel panel-span-2 events-panel reveal">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Recent Events</h3>
+                            <span>Latest local audit trail and AWS Auto Scaling activities</span>
+                        </div>
+                    </div>
+                    <div class="event-list" id="eventsList"></div>
+                </article>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        window.APP_BOOTSTRAP = {
+            pollIntervalSeconds: {{ poll_interval_seconds }},
+            tokenRequired: {{ "true" if token_required else "false" }}
+        };
+    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

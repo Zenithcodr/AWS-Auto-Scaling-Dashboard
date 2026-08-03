@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ansible
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Check shell scripts
+        run: bash -n load_test.sh load_test_worker.sh run_app.sh scripts/check_devops_prereqs.sh scripts/load_lab_env.sh scripts/sync_dashboard_env.sh scripts/render_ansible_inventory.sh scripts/run_local_dashboard.sh
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive terraform
+
+      - name: Check Ansible playbook syntax
+        env:
+          ANSIBLE_LOCAL_TEMP: /tmp/ansible-local
+          ANSIBLE_REMOTE_TEMP: /tmp/ansible-remote
+        run: ansible-playbook --syntax-check -i demo_workload, ansible/playbook.yml
+
+      - name: Build Docker image
+        run: docker build -t aws-autoscaling-dashboard:ci .

@@ -1,0 +1,124 @@
+---
+- name: Configure the AWS Auto-Scaling demo workload
+  hosts: demo_workload
+  become: true
+  vars:
+    app_port: 5000
+    demo_work_max_iterations: 8000000
+    demo_work_max_seconds: 30
+    workload_workers: 2
+    app_dir: /opt/demo-workload
+
+  pre_tasks:
+    - name: Refuse to target the local dashboard host
+      ansible.builtin.assert:
+        that:
+          - ansible_host is defined
+          - ansible_host not in ["127.0.0.1", "localhost", "::1", "0.0.0.0"]
+        fail_msg: >
+          This playbook is only for Terraform-created AWS workload instances.
+          Do not run it against the local Mac dashboard.
+
+  tasks:
+    - name: Install Python runtime
+      ansible.builtin.dnf:
+        name:
+          - python3
+          - python3-pip
+        state: present
+
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install workload dependencies
+      ansible.builtin.pip:
+        name:
+          - flask
+          - gunicorn
+        executable: pip3
+
+    - name: Deploy demo workload
+      ansible.builtin.copy:
+        dest: "{{ app_dir }}/app.py"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          from flask import Flask, jsonify, request
+          import math
+          import time
+
+          app = Flask(__name__)
+          MAX_ITERATIONS = {{ demo_work_max_iterations }}
+          MAX_SECONDS = {{ demo_work_max_seconds }}
+
+          @app.route("/")
+          def home():
+              return "Demo workload is running", 200
+
+          @app.route("/healthz")
+          def healthz():
+              return jsonify({"status": "ok"}), 200
+
+          @app.route("/demo/work")
+          def work():
+              iterations = min(int(request.args.get("iterations", "2500000")), MAX_ITERATIONS)
+              seconds = min(float(request.args.get("seconds", "0")), MAX_SECONDS)
+              started = time.perf_counter()
+              total = 0.0
+              loops = 0
+
+              if seconds > 0:
+                  deadline = started + seconds
+                  while time.perf_counter() < deadline:
+                      for i in range(iterations):
+                          total += math.sqrt((i % 100000) + 1)
+                      loops += 1
+              else:
+                  for i in range(iterations):
+                      total += math.sqrt(i + 1)
+                  loops = 1
+
+              elapsed = round(time.perf_counter() - started, 4)
+              return jsonify({
+                  "status": "ok",
+                  "iterations": iterations,
+                  "requested_seconds": seconds,
+                  "loops": loops,
+                  "elapsed_seconds": elapsed,
+                  "checksum": round(total, 2),
+              }), 200
+
+          if __name__ == "__main__":
+              app.run(host="0.0.0.0", port={{ app_port }})
+
+    - name: Install systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/demo-workload.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Demo Flask Workload
+          After=network.target
+
+          [Service]
+          WorkingDirectory={{ app_dir }}
+          ExecStart=/usr/bin/python3 -m gunicorn --bind 0.0.0.0:{{ app_port }} --workers {{ workload_workers }} --timeout 90 app:app
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start workload service
+      ansible.builtin.systemd:
+        name: demo-workload
+        enabled: true
+        state: restarted
+        daemon_reload: true
